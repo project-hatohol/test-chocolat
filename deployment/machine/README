@@ -1,0 +1,5 @@
+Required packages:
+- python-keystoneclient
+- python-novaclient
+- python-glanceclient
+- python-neutronclient 
