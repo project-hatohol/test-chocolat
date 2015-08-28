@@ -1,0 +1,25 @@
+- hosts: all
+  vars:
+    database_name: hatohol
+
+  sudo: True
+  tasks:
+  - include: setup-repos.yaml
+  - name: install hatohol-server
+    yum: name=hatohol-server
+
+  # TODO: We have to fix to be able to pass the password
+  - name: check if DB exists
+    shell: mysql -uroot -e "show databases"
+    register: dblist
+    failed_when: dblist.rc != 0
+    changed_when: False
+
+  # TODO: Specify the DB server is required when the DB server is on another machine.
+
+  - name: initialize Hatohol DB
+    command: hatohol-db-initiator --db_user root --db_password ""
+    when: "dblist.stdout.find('{{ database_name }}') == -1"
+
+  - name: launch Hatohol server
+    service: name=hatohol state=started enabled=yes

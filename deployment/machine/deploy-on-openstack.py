@@ -8,16 +8,11 @@ from novaclient import client as novaclient
 from neutronclient.neutron import client as neutronclient
 import exceptions
 import urllib2
+import time
+import datetime
+import gateauchocolat
 
-class QuickLogger(object):
-    def info(self, msg):
-        self.log("INFO", msg)
-
-    def log(self, level, msg):
-        print "%s: %s" % (level, msg)
-
-
-logger = QuickLogger()
+logger = gateauchocolat.QuickLogger()
 
 class Manager(object):
     def __init__(self, args):
@@ -26,6 +21,10 @@ class Manager(object):
         self.__keystone = None
         self.__neutron = None
         self.__security_group_id_map = {}
+        self.__deploy_catalog = {
+            "machines": {},
+            "spec_file": args.spec_file.name
+        }
 
     def __call__(self):
         nova = novaclient.Client("2", **self.__get_nova_creds())
@@ -35,7 +34,9 @@ class Manager(object):
         for name, machine in self.__spec["machines"].items():
             self.__fixup_machine_spec(machine)
             instance = self.__get_instance_or_create(name, machine, nova)
-            self.__show_ip_addr(instance.id)
+            ip_addr = self.__show_ip_addr(instance.id)
+            self.__deploy_catalog["machines"][name] = ip_addr
+        self.__save_deploy_catalog()
 
     def __setup_security_groups(self):
         sec_grps= self.__spec.get("security_groups")
@@ -77,15 +78,26 @@ class Manager(object):
 
     def __show_ip_addr(self, device_id, header="  "):
         neutron = self.get_neutron_client()
-        ports = neutron.list_ports(device_id=device_id)["ports"]
-        if len(ports) == 0:
+        do_retry = 30
+        while do_retry:
+            ports = neutron.list_ports(device_id=device_id)["ports"]
+            if len(ports) > 0:
+                break
+            # it need a little time to get the address after the new
+            # instance is launched. So we try to get on several occasions.
+            do_retry -= 1
+            time.sleep(1)
+        else:
             logger.info("Not found ports for device: %s" % device_id)
-            return
+            return []
 
+        ip_addr_array = []
         for port in ports:
             for fixed_ip in port["fixed_ips"]:
                 ip_addr = fixed_ip["ip_address"]
                 logger.info("%s%s" % (header, ip_addr))
+                ip_addr_array.append(ip_addr)
+        return ip_addr_array
 
     def __create_security_group_if_needed(self, name, sec_grp_spec):
         neutron = self.get_neutron_client()
@@ -314,6 +326,11 @@ class Manager(object):
             "cidr": cidr,
             "ip_version": 4,
         }
+
+        dns_server = network_spec.get("dns")
+        if dns_server is not None:
+            params["dns_nameservers"] = dns_server
+
         subnet = neutron.create_subnet({"subnet": params})
         logger.info("Created: Subnet: %s" % cidr)
         return subnet
@@ -348,6 +365,13 @@ class Manager(object):
         if num_routers > 1:
             raise AssertionError("Too may candidates: router: %s", name)
         return routers[0]
+
+    def __save_deploy_catalog(self):
+        fmt = "deploy-catalog-%Y%m%d-%H%M%S.yaml"
+        filename = datetime.datetime.now().strftime(fmt)
+        with open(filename, "w") as f:
+            f.write(yaml.dump(self.__deploy_catalog))
+        logger.info("Saved catalog file: %s" % filename)
 
 
 if __name__ == '__main__':

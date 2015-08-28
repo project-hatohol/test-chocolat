@@ -1,0 +1,7 @@
+- name: Download Haothol repo file
+  get_url: url={{item}} dest=/etc/yum.repos.d
+  with_items:
+    - http://project-hatohol.github.io/repo/hatohol-el7.repo
+
+- name: install epel repository
+  yum: name=epel-release
