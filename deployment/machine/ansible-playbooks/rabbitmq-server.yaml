@@ -1,0 +1,9 @@
+- hosts: all
+  sudo: True
+  tasks:
+  - name: install RabbitMQ server
+    yum: name=rabbitmq-server
+
+  - name: launch RabbitMQ server
+    service: name=rabbitmq-server state=started enabled=yes
+
