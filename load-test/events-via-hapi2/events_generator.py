@@ -8,6 +8,8 @@ import datetime
 import sys
 import traceback
 import libchocoload
+import yaml
+import time
 from hatohol import hatohol_def
 
 logger = logging.getLogger(__name__)
@@ -147,6 +149,7 @@ class HapiWorker(AMQPBaseWorker):
 
 
 class Generator(HapiWorker):
+
     def __init__(self, args):
         HapiWorker.__init__(self, args)
         self.__args = args
@@ -178,28 +181,16 @@ class Generator(HapiWorker):
                 return True
             return i <= num_events
 
+        generator = libchocoload.PATTERNS[self.__args.pattern]["batch"]
         while should_continue():
-            params = self.generate_event_std(i, chunk_size,
-                                             self.__args.hap_base_name,
-                                             self.__args.id_number)
+            params = generator(i, chunk_size,
+                               self.__args.hap_base_name,
+                               self.__args.id_number)
             self.request("putEvents", params)
             i += chunk_size
             self.__counter.show_info(i)
         logger.info("Completed: Generator: %s" % self.get_name())
 
-    @staticmethod
-    def generate_event_std(first_serial, num_events, base_name, id_number):
-        params = {
-            # "fetchId": "1",
-            # "mayMoreFlag": True,
-            "lastInfo": "last:%20d" % (first_serial + num_events - 1),
-            "events": []
-        }
-        for i in range(num_events):
-            elem = libchocoload.generate_event_std_elem(first_serial + i,
-                                                        base_name, id_number)
-            params["events"].append(elem)
-        return params
 
 
 class Receiver(HapiWorker):
@@ -207,6 +198,20 @@ class Receiver(HapiWorker):
         HapiWorker.__init__(self, args)
         self.__args = args
         logger.info("Receiver: %s" % self.get_name())
+
+        num_events = self.__args.num_events
+        self.__unlimited_mode = \
+            num_events == libchocoload.NUM_EVENTS_UNLIMITED
+        self.__calculate_last_response_id()
+
+    def __calculate_last_response_id(self):
+        NUM_PREPROC_RESPONSE = 1
+
+        num_events = self.__args.num_events
+        chunk_sz = self.__args.chunk_size
+        self.__expect_last_response_id = \
+            (num_events + (chunk_sz - 1)) / chunk_sz
+        self.__expect_last_response_id += NUM_PREPROC_RESPONSE
 
     def __call__(self):
         run_with_keyboard_interrupt_exit(self.__main_loop)
@@ -247,6 +252,14 @@ class Receiver(HapiWorker):
             if not self.__args.ignore_result_failure:
                 raise RuntimeError()
 
+        if self.__is_last_response(response):
+            ch.stop_consuming()
+
+    def __is_last_response(self, response):
+        if self.__unlimited_mode:
+            return False;
+        return response["id"] == self.__expect_last_response_id
+
     def __handle_method(self, method, msg):
         if method == "exchangeProfile":
             self.exchange_profile(msg["id"])
@@ -274,6 +287,10 @@ class Manager(object):
     def __init__(self, args):
         self.__args = args
         self.__generators = []
+        self.__parameters = {
+            "pattern": args.pattern,
+            "servers": [],
+        }
         self.__hatohol_rest = libchocoload.HatoholRestApi(args)
 
     def __call__(self):
@@ -314,13 +331,16 @@ class Manager(object):
             msg = "Registered a monitoring server for event generation: " \
                   "%s (ID: %d)" % (data["nickname"], res["id"])
             logger.info(msg)
+            server_info = {"id": res["id"]}
+            self.__parameters["servers"].append(server_info)
 
         for i in range(self.__args.num_generators):
             register(i)
 
     def main_loop(self):
+        self.__start_time = time.time()
         num_events_list = libchocoload.distribute_number(
-                            self.__args.num_events,
+                            self.__args.num_total_events,
                             self.__args.num_generators)
         for id_number in range(self.__args.num_generators):
             _args = {
@@ -346,10 +366,33 @@ class Manager(object):
             # __generators should be renamed
             self.__generators.append(rcv)
 
+            server_info = self.__parameters["servers"][id_number]
+            server_info["num_events"] = args.num_events
+        self.__join_all()
+
+    def __join_all(self):
+        idx = 0
+        TIMEOUT = 0.5 # second
         while len(self.__generators) > 0:
-            self.__generators[0].join()
-            del self.__generators[0]
-            logger.info("Joined one process.")
+            proc = self.__generators[idx]
+            pid = proc.pid
+            proc.join(TIMEOUT)
+            if not proc.is_alive():
+                del self.__generators[idx]
+                logger.info("Joined one process: %d" % pid)
+
+            idx += 1
+            if idx >= len(self.__generators):
+                idx = 0
+
+
+    def get_elapsed_time(self):
+        return time.time() - self.__start_time
+
+    def save_paramter_file(self):
+        with open(self.__args.parameter_file, "w") as f:
+            f.write(yaml.dump(self.__parameters))
+        logger.info("Saved parameters: %s", self.__args.parameter_file)
 
     def __get_amqp_queue_address(self, index):
         return "%s.%s" % (self.__args.hap_base_name, index)
@@ -370,7 +413,7 @@ def main():
     parser = argparse.ArgumentParser()
     libchocoload.HatoholRestApi.define_arguments(parser)
     parser.add_argument("amqp_broker_url", help="A ULR of the AMQP broker")
-    parser.add_argument("--num-generators", default=1, type=int,
+    parser.add_argument("-g", "--num-generators", default=1, type=int,
                         help="The number of event generators working via HAPI2.0")
     parser.add_argument("--hap-base-name", default="events-generator")
     parser.add_argument("--amqp-user", default="guest")
@@ -383,20 +426,30 @@ def main():
                         help="Continue if the result is FALURE.")
     parser.add_argument("-c", "--chunk-size", type=int, default=1,
                         help="The number of events in one putEvents call.")
-    parser.add_argument("-n", "--num-events", type=int,
+    parser.add_argument("-n", "--num-total-events", type=int,
                         default=libchocoload.NUM_EVENTS_UNLIMITED,
                         help="The number of events to be generated. 0 means unlimited.")
+    parser.add_argument("-p", "--pattern", type=str,
+                        default="simple", choices=libchocoload.PATTERNS.keys())
+    parser.add_argument("-f", "--parameter-file", type=str,
+                        default=libchocoload.DEFAULT_PARAMETER_FILE)
 
     args = parser.parse_args()
     mgr = Manager(args)
-    if args.only_main_loop:
-        logger.info("Run main loop only.")
-        mgr.main_loop()
-    else:
-        mgr()
-
-if __name__ == "__main__":
     try:
-        main()
+        if args.only_main_loop:
+            logger.info("Run main loop only.")
+            mgr.main_loop()
+        else:
+            mgr()
     except KeyboardInterrupt:
         logger.info("Exit: KeyboardInterrupt")
+
+    elapsed_time = mgr.get_elapsed_time()
+    logger.info("Elapsed time: %.3f [s], rate: %.1f [events/s]" %
+                (elapsed_time, float(args.num_total_events)/elapsed_time))
+    mgr.save_paramter_file()
+
+
+if __name__ == "__main__":
+    main()
