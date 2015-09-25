@@ -1,8 +1,63 @@
 - hosts: all
+  vars:
+    db_name: hatohol
+    db_user: hatohol
+    db_password: hatohol
+    db_host: "%"
+
+    db_name_web: hatohol_client
+    db_user_web: hatohol
+    db_password_web: hatohol
+    db_host_web: "%"
+
+    hatohol_server_with_local_db: false
+    hatohol_web_with_local_db: false
+
   sudo: True
   tasks:
+
+  - name: whether the same user
+    set_fact:
+      same_user: "db_user == db_user_web and db_host == db_host_web"
+
+  - name: set db_host if needed
+    set_fact:
+      db_host: "localhost"
+    when: hatohol_server_with_local_db
+
+  - name: set db_host_web if needed
+    set_fact:
+      db_host_web: "localhost"
+    when: hatohol_web_with_local_db
+
+  - name: should the same password if the same user
+    assert: that="not (same_user and db_password != db_password_web)"
+
   - name: install MariaDB
     yum: name=mariadb-server
+
+  - name: start MariaDB
+    service: name=mariadb state=started enabled=yes
+
+  # This package is required for mysql_user
+  - name: install MySQL-python
+    yum: name=MySQL-python
+
+  # The lines for creating tables is written in hatohol-serer.yaml
+  - name: create user for Hatohol server
+    mysql_user: name={{ db_user }} password={{ db_password }} host={{ db_host }} priv={{ db_name }}.*:ALL
+    when: not same_user
+
+  - name: create user for Hatohol Web
+    mysql_user: name={{ db_user_web }} password={{ db_password_web }} host={{ db_host_web }} priv={{ db_name_web }}.*:ALL
+    when: not same_user
+
+  - name: create user for Both Hatohol server and Web
+    mysql_user: name={{ db_user }} password={{ db_password }} host={{ db_host }} priv={{ db_name }}.*:ALL/{{ db_name_web }}.*:ALL
+    when: same_user
+
+  - name: create the DB for Hatohol Web
+    mysql_db: name={{ db_name_web }}
 
   # TODO: Fix my.conf if this check fails
   # Note: The default one of CentOS7 clould image is InnoDB
@@ -12,5 +67,3 @@
     failed_when: default_engine.rc != 0 or default_engine.stdout != "InnoDB"
     changed_when: default_engine.stdout != "InnoDB"
 
-  - name: start MariaDB
-    service: name=mariadb state=started enabled=yes

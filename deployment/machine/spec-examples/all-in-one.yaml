@@ -1,0 +1,34 @@
+# If auth_url, auth_username, auth_password, or auth_tenant_name is not,
+# envrionment variables OS_AUTH_URL, OS_USERNAME, OS_PASSWORD, or
+# OS_TENANT_NAME is respectively used.
+auth_url: "http://192.168.30.31:35357/v2.0"
+auth_username: "admin"
+auth_password: "admin"
+auth_tenant_name: "admin"
+
+# The following paramters can be overloaded in each machines in 'networks'
+key_name: "mykey"
+image_name: CentOS-7-x86_64_Generic
+image_uri: http://cloud.centos.org/centos/7/images/CentOS-7-x86_64-GenericCloud.qcow2
+login_user: centos
+network_name: chocolat-net-01
+security_group_name: chocolat-01
+
+machines:
+- name: chocolat-all-in-one
+  flavor: m1.large
+  components: [db-server, hatohol-server, hatohol-web, rabbitmq-server]
+  # hypervisor: compute1
+
+networks:
+  chocolat-net-01:
+    cidr: 192.168.15.0/24
+    router: chocolat-router
+    dns: [8.8.8.8]
+
+routers:
+  chocolat-router:
+    gateway: ext-net
+
+security_groups:
+  chocolat-01:

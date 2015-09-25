@@ -31,7 +31,8 @@ class Manager(object):
         self.__setup_security_groups()
         self.__setup_routers()
         self.__setup_networks()
-        for name, machine in self.__spec["machines"].items():
+        for machine in self.__spec["machines"]:
+            name = machine["name"]
             self.__fixup_machine_spec(machine)
             instance = self.__get_instance_or_create(name, machine, nova)
             ip_addr = self.__show_ip_addr(instance.id)
@@ -63,15 +64,33 @@ class Manager(object):
         for name, network in networks.items():
             self.__create_network_if_needed(name, network)
 
+    def __find_most_likely(self, seq, label, name):
+        if len(seq) == 0:
+            return None
+
+        if len(seq) == 1:
+            logger.info("Found %s: %s" % (label, name))
+            return seq[0]
+
+        ks = self.__get_keystone()
+        tenant_id = ks.tenant_id
+        neutron = self.get_neutron_client()
+        for s in seq:
+            if s["tenant_id"] == tenant_id:
+                break
+        else:
+            raise RuntimeError(
+                    "Failed to find the most likey %s from %d of %s"
+                    % (len(seq), name))
+        return s
+
     def __get_network(self, name):
         neutron = self.get_neutron_client()
         networks = neutron.list_networks(name=name)["networks"]
-        num_networks = len(networks)
-        if num_networks == 0:
+        network = self.__find_most_likely(networks, "network", name)
+        if network is None:
             raise RuntimeError("Not round: network: %s", name)
-        if num_networks > 1:
-            raise AssertionError("Too may candidates: network: %s", name)
-        return networks[0]
+        return network
 
     def __get_network_id(self, name):
         return self.__get_network(name)["id"]
@@ -101,13 +120,12 @@ class Manager(object):
 
     def __create_security_group_if_needed(self, name, sec_grp_spec):
         neutron = self.get_neutron_client()
-        security_groups = neutron.list_security_groups(name=name)["security_groups"]
-        if len(security_groups) > 1:
-            raise AssertionError("Found multiple security groups with name: %s"
-                                 % name)
-        if len(security_groups) > 0:
-            logger.info("Found security group: %s" % name)
-            return security_groups[0]
+        kw = {"name": name}
+        security_groups = neutron.list_security_groups(**kw)["security_groups"]
+
+        sg = self.__find_most_likely(security_groups, "security group", name)
+        if sg is not None:
+            return sg
 
         params = {
             "name": name,
@@ -152,7 +170,7 @@ class Manager(object):
             #"enable_snat": True,
         }
         neutron.add_gateway_router(router["id"], ext_gw_info)
-        logger.info("Created router: %s (%s)" % (namek, router["id"]))
+        logger.info("Created router: %s (%s)" % (name, router["id"]))
         self.__show_ip_addr(router["id"])
 
     def __get_security_group_ids(self, machine):
@@ -168,11 +186,20 @@ class Manager(object):
 
 
     def __get_instance_or_create(self, name, machine, nova):
+        hypervisor = machine.get("hypervisor")
+        if hypervisor:
+            # The following line is just to make sure the hypervisor exists
+            # and the returned varible: 'host' is currently not used.
+            host = nova.hosts.find(host_name=hypervisor, zone="nova")
         curr_instances = nova.servers.list()
         for vm in curr_instances:
             # Is there a more efficient way to find the instance ?
             if vm.name == name:
                 logger.info("Found machine: %s (%s)" % (name, vm.id))
+                if hypervisor:
+                    running_on = getattr(vm, "OS-EXT-SRV-ATTR:host")
+                    # TODO: try to migrate if a hypervisor instead of exception
+                    assert running_on == hypervisor
                 return vm
 
         key_name = machine["key_name"]
@@ -187,6 +214,8 @@ class Manager(object):
             "nics": nics,
             "security_groups": self.__get_security_group_ids(machine),
         }
+        if hypervisor is not None:
+            sv_kwargs["availability_zone"] = "nova:%s" % hypervisor
         instance = nova.servers.create(**sv_kwargs)
         logger.info("Created instance: %s (%s)" % (instance.name, instance.id))
         return instance
@@ -359,12 +388,10 @@ class Manager(object):
     def __get_router(self, name):
         neutron = self.get_neutron_client()
         routers = neutron.list_routers(name=name)["routers"]
-        num_routers = len(routers)
-        if num_routers == 0:
+        router = self.__find_most_likely(routers, "router", name)
+        if router is None:
             raise RuntimeError("Not round: router: %s", name)
-        if num_routers > 1:
-            raise AssertionError("Too may candidates: router: %s", name)
-        return routers[0]
+        return router
 
     def __save_deploy_catalog(self):
         fmt = "deploy-catalog-%Y%m%d-%H%M%S.yaml"

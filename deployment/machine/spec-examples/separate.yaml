@@ -11,23 +11,35 @@ key_name: "mykey"
 image_name: CentOS-7-x86_64_Generic
 image_uri: http://cloud.centos.org/centos/7/images/CentOS-7-x86_64-GenericCloud.qcow2
 login_user: centos
-network_name: chocolat-net-01
-security_group_name: chocolat-01
+network_name: chocolat-net-02
+security_group_name: chocolat-02
 
 machines:
-  chocolat-all-in-one:
-    flavor: m1.large
-    components: [db-server, hatohol-server, hatohol-web, rabbitmq-server]
+- name: chocolat-db
+  flavor: m1.large
+  components: [db-server]
+
+- name: chocolat-hatohol-server
+  flavor: m1.large
+  components: [hatohol-server]
+
+- name: chocolat-hatohol-web
+  flavor: m1.large
+  components: [hatohol-web]
+
+- name: chocolat-rabbitmq
+  flavor: m1.large
+  components: [rabbitmq-server]
 
 networks:
-  chocolat-net-01:
-    cidr: 192.168.15.0/24
-    router: chocolat-router
+  chocolat-net-02:
+    cidr: 192.168.16.0/24
+    router: chocolat-router-02
     dns: [8.8.8.8]
 
 routers:
-  chocolat-router:
+  chocolat-router-02:
     gateway: ext-net
 
 security_groups:
-  chocolat-01:
+  chocolat-02:

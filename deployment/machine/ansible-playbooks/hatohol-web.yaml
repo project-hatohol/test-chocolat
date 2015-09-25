@@ -1,6 +1,36 @@
 - hosts: all
+  vars:
+    db_server: "localhost"
+    hatohol_server: "localhost"
+
   sudo: True
   tasks:
   - include: setup-repos.yaml
   - name: install hatohol-web
     yum: name=hatohol-web
+
+  - name: set the address of the DB server
+    replace:
+      dest: /usr/libexec/hatohol/client/hatohol/settings.py
+      regexp: "'HOST': *'.*'"
+      replace: "'HOST':  '{{ db_server }}'"
+      backup: yes
+    when: db_server != 'localhost'
+
+  - name: set Hatohol server address
+    replace:
+      dest: /usr/libexec/hatohol/client/hatohol/hatoholserver.py
+      regexp: "DEFAULT_SERVER_ADDR *= *'.*'"
+      replace: "DEFAULT_SERVER_ADDR = '{{ hatohol_server }}'"
+      backup: yes
+    when: db_server != 'localhost'
+
+  - name: create tables for WebUI
+    shell: /usr/libexec/hatohol/client/manage.py syncdb
+    changed_when: false
+
+  - name: allow the WebUI to use network
+    seboolean: name=httpd_can_network_connect state=yes persistent=yes
+
+  - name: launch HTTP server
+    service: name=httpd state=started enabled=yes

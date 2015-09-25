@@ -1,6 +1,10 @@
 - hosts: all
   sudo: True
   tasks:
+
+  - name: install epel repository
+    yum: name=epel-release
+
   - name: install RabbitMQ server
     yum: name=rabbitmq-server
 

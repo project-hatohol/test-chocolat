@@ -1,6 +1,10 @@
 - hosts: all
   vars:
-    database_name: hatohol
+    db_name: hatohol
+    db_login_user: hatohol
+    db_login_password: hatohol
+    hatohol_conf_path: hatohol.conf
+    db_server: localhost
 
   sudo: True
   tasks:
@@ -8,18 +12,22 @@
   - name: install hatohol-server
     yum: name=hatohol-server
 
-  # TODO: We have to fix to be able to pass the password
+  - name: copy configuration file
+    copy: src={{ hatohol_conf_path }} dest=/etc/hatohol/hatohol.conf
+    when: db_server != 'localhost'
+
   - name: check if DB exists
-    shell: mysql -uroot -e "show databases"
+    shell: mysql -h {{ db_server }} -u{{ db_login_user }} -p{{ db_login_password }} -N -e "show databases LIKE '{{ db_name }}'"
     register: dblist
     failed_when: dblist.rc != 0
     changed_when: False
 
-  # TODO: Specify the DB server is required when the DB server is on another machine.
+  #- debug: var=dblist
+  #- debug: var=dblist.stdout
 
   - name: initialize Hatohol DB
-    command: hatohol-db-initiator --db_user root --db_password ""
-    when: "dblist.stdout.find('{{ database_name }}') == -1"
+    command: hatohol-db-initiator --db-user {{ db_login_user }} --db-password {{ db_login_password }} -s
+    when: "dblist.stdout != '{{ db_name }}'"
 
   - name: launch Hatohol server
     service: name=hatohol state=started enabled=yes
