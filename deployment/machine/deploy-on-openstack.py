@@ -178,11 +178,7 @@ class Manager(object):
             names = machine["security_group_name"]
         else:
             names = (machine["security_group_name"],)
-
-        grps = []
-        for name in names:
-            grps.append(self.__security_group_id_map[name])
-        return grps
+        return [self.__security_group_id_map[name] for name in names]
 
 
     def __get_instance_or_create(self, name, machine, nova):
