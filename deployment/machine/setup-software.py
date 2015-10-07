@@ -21,6 +21,12 @@ class AnsibleController(object):
 
         self.__check_if_using_local_db_server()
 
+    def __add_extra_repo(self):
+        repo_file = self.__args.extra_repo_file
+        if repo_file is None:
+            return
+        self.__extra_vars.append("ext_repo_file=%s" % os.path.abspath(repo_file.name))
+
     def __check_if_using_local_db_server(self):
         def use_local_db(component):
             return db_server_addr == self.__find_address_of(component)
@@ -65,10 +71,10 @@ class AnsibleController(object):
         ip_addr = ip_addrs[0]
         hosts_file_path = name
         self.__create_hosts_file(hosts_file_path, ip_addr)
-        self.__prepare_for_ansible_run(machine_spec, ip_addr)
         for component_name in machine_spec["components"]:
             logger.info("Start setup: %s, component: %s"
                         % (name, component_name))
+            self.__prepare_for_ansible_run(component_name, ip_addr)
             playbook_path = self.__get_playbook_path(component_name)
             self.__run_ansible_playbook(hosts_file_path, playbook_path)
 
@@ -87,16 +93,18 @@ class AnsibleController(object):
         for extra_var in self.__extra_vars:
             cmd.append("-e")
             cmd.append(extra_var)
+        logger.info("Command: %s" % cmd)
         proc = subprocess.Popen(cmd).communicate()
         self.__extra_vars = []
 
-    def __prepare_for_ansible_run(self, machine_spec, ip_addr):
-        if "db-server" in machine_spec["components"]:
-            self.__prepare_for_db_server(ip_addr)
-        if "hatohol-server" in machine_spec["components"]:
-            self.__prepare_for_hatohol_server(ip_addr)
-        if "hatohol-web" in machine_spec["components"]:
-            self.__prepare_for_hatohol_web(ip_addr)
+    def __prepare_for_ansible_run(self, component_name, ip_addr):
+        func = {
+            "db-server":      self.__prepare_for_db_server,
+            "hatohol-server": self.__prepare_for_hatohol_server,
+            "hatohol-web":    self.__prepare_for_hatohol_web,
+        }.get(component_name)
+        if func is not None:
+            func(ip_addr)
 
     def __prepare_for_db_server(self, ip_addr):
         if self.__hatohol_server_with_local_db:
@@ -105,17 +113,25 @@ class AnsibleController(object):
             self.__extra_vars.append("hatohol_web_with_local_db=true")
 
     def __prepare_for_hatohol_server(self, ip_addr):
-        db_server_addr = self.__find_address_of("db-server")
+        if self.__hatohol_server_with_local_db:
+            db_server_addr = "localhost"
+        else:
+            db_server_addr = self.__find_address_of("db-server")
         self.__generate_hatohol_conf(db_server_addr)
 
         self.__extra_vars.append("db_server=%s" % db_server_addr)
+        self.__add_extra_repo()
 
     def __prepare_for_hatohol_web(self, ip_addr):
-        db_server_addr = self.__find_address_of("db-server")
+        if self.__hatohol_web_with_local_db:
+            db_server_addr = "localhost"
+        else:
+            db_server_addr = self.__find_address_of("db-server")
         self.__extra_vars.append("db_server=%s" % db_server_addr)
 
         hatohol_server_addr = self.__find_address_of("hatohol-server")
         self.__extra_vars.append("hatohol_server=%s" % hatohol_server_addr)
+        self.__add_extra_repo()
 
     # TODO: Make a reverse map for the search
     def __find_address_of(self, component):
@@ -163,6 +179,7 @@ if __name__ == '__main__':
     parser.add_argument("-m", "--machines", nargs="*", help=help_machines)
     parser.add_argument("-c", "--hatohol-conf-path", type=str,
                         default="hatohol.conf")
+    parser.add_argument("-r", "--extra-repo-file", type=file)
     parser.add_argument("catalog_file", type=file, help=help_catalog)
     args = parser.parse_args()
     controller = AnsibleController(args)

@@ -11,6 +11,8 @@ import urllib2
 import time
 import datetime
 import gateauchocolat
+import os
+import os.path
 
 logger = gateauchocolat.QuickLogger()
 
@@ -54,7 +56,8 @@ class Manager(object):
             logger.info("Not found: routers in the spec. file")
             return
         for name, router in routers.items():
-            self.__create_router_if_needed(name, router)
+            addrs = self.__create_router_if_needed(name, router)
+            self.__deploy_catalog["router_addr"] = addrs
 
     def __setup_networks(self):
         networks = self.__spec.get("networks")
@@ -64,13 +67,23 @@ class Manager(object):
         for name, network in networks.items():
             self.__create_network_if_needed(name, network)
 
-    def __find_most_likely(self, seq, label, name):
-        if len(seq) == 0:
+    def __find_most_likely(self, seq, label, name, all_tenants=True):
+
+        def show_info(obj):
+            msg = "Found %s: %s" % (label, name)
+            obj_id = obj.get("id")
+            if obj_id is not None:
+                msg += " (%s)" % obj_id
+            logger.info(msg)
+
+        len_seq = len(seq)
+        if len_seq == 0:
             return None
 
-        if len(seq) == 1:
-            logger.info("Found %s: %s" % (label, name))
-            return seq[0]
+        if all_tenants and len_seq == 1:
+            obj = seq[0]
+            show_info(obj)
+            return obj
 
         ks = self.__get_keystone()
         tenant_id = ks.tenant_id
@@ -79,9 +92,10 @@ class Manager(object):
             if s["tenant_id"] == tenant_id:
                 break
         else:
-            raise RuntimeError(
-                    "Failed to find the most likey %s from %d of %s"
-                    % (len(seq), name))
+            logger.warn("Not found the most likey %s from %d of %s"
+                        % (label, len_seq, name))
+            return None
+        show_info(s)
         return s
 
     def __get_network(self, name):
@@ -123,7 +137,8 @@ class Manager(object):
         kw = {"name": name}
         security_groups = neutron.list_security_groups(**kw)["security_groups"]
 
-        sg = self.__find_most_likely(security_groups, "security group", name)
+        sg = self.__find_most_likely(security_groups, "security group", name,
+                                     all_tenants=False)
         if sg is not None:
             return sg
 
@@ -134,7 +149,6 @@ class Manager(object):
         security_group = _sgrp["security_group"]
 
         # add rules
-        print security_group
         params = {
             "security_group_id": security_group["id"],
             "direction": "ingress",
@@ -155,8 +169,7 @@ class Manager(object):
                 continue
             if gw["network_id"] == gateway_network_id:
                 logger.info("Found router: %s (%s)" % (name, router["id"]))
-                self.__show_ip_addr(router["id"])
-                return
+                return self.__show_ip_addr(router["id"])
 
         # create router
         params = {
@@ -171,7 +184,7 @@ class Manager(object):
         }
         neutron.add_gateway_router(router["id"], ext_gw_info)
         logger.info("Created router: %s (%s)" % (name, router["id"]))
-        self.__show_ip_addr(router["id"])
+        return self.__show_ip_addr(router["id"])
 
     def __get_security_group_ids(self, machine):
         if hasattr(machine["security_group_name"], "__iter__"):
@@ -180,6 +193,23 @@ class Manager(object):
             names = (machine["security_group_name"],)
         return [self.__security_group_id_map[name] for name in names]
 
+    def __wait_machine_ready(self, instance):
+        MAX_COUNT = 60
+        logger.info("Wait for completion (max: %s sec.)" % MAX_COUNT)
+        for count in range(MAX_COUNT):
+            instance.get()
+            if instance.status == "ACTIVE":
+                break
+            if instance.status == "ERROR":
+                msg = "Got ERROR"
+                fault = getattr(instance, "fault", None)
+                if fault is not None:
+                    msg += ": "
+                    msg += fault["message"]
+                raise RuntimeError(msg)
+            time.sleep(1)
+        else:
+            raise RuntimeError("Time out: last status: %s" % staus)
 
     def __get_instance_or_create(self, name, machine, nova):
         hypervisor = machine.get("hypervisor")
@@ -214,6 +244,8 @@ class Manager(object):
             sv_kwargs["availability_zone"] = "nova:%s" % hypervisor
         instance = nova.servers.create(**sv_kwargs)
         logger.info("Created instance: %s (%s)" % (instance.name, instance.id))
+
+        self.__wait_machine_ready(instance)
         return instance
 
     def __get_creds(self, password_key="password", tenant_key="tenant_name"):
@@ -395,6 +427,12 @@ class Manager(object):
         with open(filename, "w") as f:
             f.write(yaml.dump(self.__deploy_catalog))
         logger.info("Saved catalog file: %s" % filename)
+
+        # make a link
+        link_name = "deploy-catalog.yaml"
+        if os.path.exists(link_name):
+            os.remove(link_name)
+        os.symlink(filename, link_name)
 
 
 if __name__ == '__main__':

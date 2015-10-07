@@ -37,6 +37,10 @@ def setup_logger(_logger):
     handler = logging.StreamHandler()
     _logger.addHandler(handler)
     _logger.setLevel(logging.INFO)
+    fmt = "%(asctime)s %(levelname)8s [%(process)5d] %(name)s:%(lineno)d:  " \
+          "%(message)s"
+    handler.setFormatter(logging.Formatter(fmt))
+    _logger.addHandler(handler)
 
 
 def get_current_hapi_utc_time():

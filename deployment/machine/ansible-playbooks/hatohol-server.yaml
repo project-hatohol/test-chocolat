@@ -10,7 +10,7 @@
   tasks:
   - include: setup-repos.yaml
   - name: install hatohol-server
-    yum: name=hatohol-server
+    yum: name=hatohol-server state=latest
 
   - name: copy configuration file
     copy: src={{ hatohol_conf_path }} dest=/etc/hatohol/hatohol.conf

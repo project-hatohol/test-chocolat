@@ -39,7 +39,8 @@ class Counter(object):
         if time_diff < self.__show_interval:
             return
         serial_diff = serial - self.__prev_serial
-        logger.info("%.3f events/sec.", serial_diff / time_diff)
+        logger.info("%.3f events/sec. serial: %s" %
+                    (serial_diff / time_diff, serial))
         self.__prev_show_time = now
         self.__prev_serial = serial
 
@@ -116,7 +117,9 @@ class AMQPBaseWorker(object):
             "jsonrpc": "2.0",
         }
         self.publish(msg)
+        req_id = self.__request_id
         self.__request_id += 1
+        return req_id
 
     def publish(self, msg):
         self.__channel.basic_publish(
@@ -186,11 +189,22 @@ class Generator(HapiWorker):
             params = generator(i, chunk_size,
                                self.__args.hap_base_name,
                                self.__args.id_number)
-            self.request("putEvents", params)
+            req_id = self.request("putEvents", params)
             i += chunk_size
             self.__counter.show_info(i)
+            self.__regulate_generation_rate(req_id)
         logger.info("Completed: Generator: %s" % self.get_name())
 
+    def __regulate_generation_rate(self, request_id):
+        queuing_level = self.__args.queuing_level
+        if queuing_level == 0:
+            return
+        while True:
+            diff = request_id - self.__args.last_received_id.value
+            if diff < queuing_level:
+                break
+            # Should we wait for any event instead of this simple polling.
+            time.sleep(1)
 
 
 class Receiver(HapiWorker):
@@ -252,8 +266,12 @@ class Receiver(HapiWorker):
             if not self.__args.ignore_result_failure:
                 raise RuntimeError()
 
+        self.__save_received_id_in_shm(response["id"])
         if self.__is_last_response(response):
             ch.stop_consuming()
+
+    def __save_received_id_in_shm(self, response_id):
+        self.__args.last_received_id.value = response_id
 
     def __is_last_response(self, response):
         if self.__unlimited_mode:
@@ -292,6 +310,7 @@ class Manager(object):
             "servers": [],
         }
         self.__hatohol_rest = libchocoload.HatoholRestApi(args)
+        self.__last_received_id = multiprocessing.Value('L', 0)
 
     def __call__(self):
         self.__hatohol_rest.login()
@@ -347,6 +366,7 @@ class Manager(object):
                 "queue_name": self.__get_amqp_queue_address(id_number),
                 "id_number": id_number,
                 "num_events": num_events_list[id_number],
+                "last_received_id": self.__last_received_id,
             }
             for key in dir(self.__args):
                 if key[0] != "_":
@@ -433,6 +453,8 @@ def main():
                         default="simple", choices=libchocoload.PATTERNS.keys())
     parser.add_argument("-f", "--parameter-file", type=str,
                         default=libchocoload.DEFAULT_PARAMETER_FILE)
+    parser.add_argument("-q", "--queuing-level", type=int, default=100,
+                        help="The number of messages queued in advance.")
 
     args = parser.parse_args()
     mgr = Manager(args)

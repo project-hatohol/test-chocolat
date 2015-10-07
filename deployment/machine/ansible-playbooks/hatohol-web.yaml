@@ -7,11 +7,11 @@
   tasks:
   - include: setup-repos.yaml
   - name: install hatohol-web
-    yum: name=hatohol-web
+    yum: name=hatohol-web state=latest
 
   - name: set the address of the DB server
     replace:
-      dest: /usr/libexec/hatohol/client/hatohol/settings.py
+      dest: /usr/libexec/hatohol/client/hatohol/base_settings.py
       regexp: "'HOST': *'.*'"
       replace: "'HOST':  '{{ db_server }}'"
       backup: yes

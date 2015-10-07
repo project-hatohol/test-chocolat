@@ -3,5 +3,9 @@
   with_items:
     - http://project-hatohol.github.io/repo/hatohol-el7.repo
 
+- name: Extra repo file
+  copy: src={{ ext_repo_file }} dest=/etc/yum.repos.d
+  when: ext_repo_file is defined
+
 - name: install epel repository
   yum: name=epel-release
