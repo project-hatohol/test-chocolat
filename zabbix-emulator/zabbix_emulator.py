@@ -30,9 +30,9 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
         # check JSON-RPC version
         jsonrpc = body.get("jsonrpc")
+        jsonrpc = self.__get_element_with_check(body, "jsonrpc",
+                                                lambda x: x == "2.0")
         if jsonrpc != "2.0":
-            self.send_response(400)
-            self.end_headers()
             logger.warning("Unsupported jsonrpc version: %s" % jsonrpc)
             return
 
