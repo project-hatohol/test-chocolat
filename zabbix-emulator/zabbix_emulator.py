@@ -13,6 +13,8 @@ logger.setLevel(logging.INFO)
 
 class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
+    __valid_tokens = set()
+
     def do_GET(self):
         msg = "<html></html>"
         self.wfile.write(msg)
@@ -42,16 +44,23 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             logger.warning("Not found: req_id")
             return
 
-        # read method
-        params = self.__get_element_with_check(body, "params")
-        if jsonrpc is None:
-            logger.warning("Not found: params")
-            return
-
         # method
         method = self.__get_element_with_check(body, "method")
         if method is None:
             logger.warning("Not found: method")
+            return
+
+        # params
+        params = None
+        if self.__need_params(method):
+            params = self.__get_element_with_check(body, "params")
+            if params is None:
+                logger.warning("Not found: params")
+                return
+
+        # check token
+        print body
+        if self.__should_check_token(method) and not self.__check_token(params):
             return
 
         # dispatch
@@ -59,6 +68,7 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         if handler is None:
             logger.warning("Unknwon method: %s" % method)
             return
+
         self.wfile.write(json.dumps(handler(self, params, req_id)))
 
     def do_PUT(self):
@@ -73,16 +83,64 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             return None
         return p
 
+    def __need_params(self, method):
+        if method == "apiinfo.version":
+            return False
+        return True
+
+    def __should_check_token(self, method):
+        return not method in ("user.authenticate", "apiinfo.version")
+
+    def __check_token(self, body):
+        token = self.__get_element_with_check(body, "auth")
+        if token is None:
+            self.send_response(400)
+            self.end_headers()
+            logger.warning("Not found: token")
+            return False
+        if not self.validate_token(token):
+            self.send_response(400)
+            self.end_headers()
+            logger.warning("Invalid token: %s" % token)
+            return False
+        return True
+
     def __handler_user_authenticate(self, params, req_id):
         logger.info("Got authenticate request (id: %s)" % req_id)
+        token = self.get_token(params)
+        if token is None:
+            self.send_response(400)
+            self.end_headers()
+            return
         msg = {
             "jsonrpc": "2.0",
-            "result": "0424bd59b807674191e7d77572075f33",
+            "result": self.get_token(params),
             "id": req_id,
         }
         return msg
 
-    post_handlers = {"user.authenticate": __handler_user_authenticate,}
+    def __handler_apiinfo_version(self, params, req_id):
+        logger.info("Got APIInfo version (id: %s)" % req_id)
+        msg = {
+            "jsonrpc": "2.0",
+            "result": "2.0.5",
+            "id": req_id,
+        }
+        return msg
+
+    def get_token(self, params):
+        # This is too easy implementaion
+        token = "0424bd59b807674191e7d77572075f33"
+        self.__valid_tokens.add(token)
+        return token
+
+    def validate_token(self, token):
+        return token in self.__valid_tokens
+
+    post_handlers = {
+        "user.authenticate": __handler_user_authenticate,
+        "apiinfo.version": __handler_apiinfo_version,
+    }
 
 
 def main():
