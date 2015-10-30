@@ -46,6 +46,7 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
         # method
         method = self.__get_element_with_check(body, "method")
+        logger.debug("POST: method: %s" % method)
         if method is None:
             logger.warning("Not found: method")
             return
@@ -59,8 +60,7 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
                 return
 
         # check token
-        print body
-        if self.__should_check_token(method) and not self.__check_token(params):
+        if self.__should_check_token(method) and not self.__check_token(body):
             return
 
         # dispatch
@@ -92,11 +92,12 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         return not method in ("user.authenticate", "apiinfo.version")
 
     def __check_token(self, body):
+        print body
         token = self.__get_element_with_check(body, "auth")
         if token is None:
             self.send_response(400)
             self.end_headers()
-            logger.warning("Not found: token")
+            logger.warning("Not found: auth. token")
             return False
         if not self.validate_token(token):
             self.send_response(400)
@@ -146,7 +147,12 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--port", type=int, default=8000)
+    parser.add_argument("--log-level", choices={"DEBUG", "INFO"},
+                        default="INFO")
     args = parser.parse_args()
+
+    logger.info("Logging level: %s" % args.log_level)
+    exec("logger.setLevel(logging.%s)" % args.log_level)
 
     handler = BaseHandler
     httpd = SocketServer.TCPServer(("", args.port), handler,
