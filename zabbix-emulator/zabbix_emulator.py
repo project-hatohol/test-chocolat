@@ -6,6 +6,7 @@ import cgi
 import SimpleHTTPServer
 import SocketServer
 import json
+import trigger_params
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(stream=sys.stdout))
@@ -69,7 +70,12 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             logger.warning("Unknwon method: %s" % method)
             return
 
-        self.wfile.write(json.dumps(handler(self, params, req_id)))
+        response = {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": handler(self, params),
+        }
+        self.wfile.write(json.dumps(response))
 
     def do_PUT(self):
         raise NotImplementedError()
@@ -78,8 +84,7 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
                                  success=lambda x: x is not None):
         p = obj.get(name)
         if not success(p):
-            self.send_response(400)
-            self.end_headers()
+            self.wfile.write(json.dumps(self.__invalid_json_response()))
             return None
         return p
 
@@ -92,42 +97,171 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         return not method in ("user.authenticate", "apiinfo.version")
 
     def __check_token(self, body):
-        print body
+        print json.dumps(body)
         token = self.__get_element_with_check(body, "auth")
         if token is None:
-            self.send_response(400)
-            self.end_headers()
+            self.wfile.write(json.dumps(self.__invalid_json_response()))
             logger.warning("Not found: auth. token")
             return False
         if not self.validate_token(token):
-            self.send_response(400)
-            self.end_headers()
+            self.wfile.write(json.dumps(self.__invalid_json_response()))
             logger.warning("Invalid token: %s" % token)
             return False
         return True
 
-    def __handler_user_authenticate(self, params, req_id):
-        logger.info("Got authenticate request (id: %s)" % req_id)
+    def __handler_user_authenticate(self, params):
+        logger.info("Got authenticate request")
         token = self.get_token(params)
         if token is None:
-            self.send_response(400)
-            self.end_headers()
+            self.wfile.write(json.dumps(self.__invalid_json_response()))
             return
-        msg = {
-            "jsonrpc": "2.0",
-            "result": self.get_token(params),
-            "id": req_id,
+        return self.get_token(params)
+
+    def __invalid_json_response(self):
+        return {
+            "jsonrpc":"2.0",
+            "error": {
+                "code":-32700,
+                "message":"Parse error",
+                "data":"Invalid JSON. An error occurred on the server while parsing the JSON text."
+            }
         }
+
+    def __handler_apiinfo_version(self, params):
+        logger.info("Got APIInfo version")
+        return "2.0.5"
+
+    def __handler_host_get(self, params):
+        msg = [{
+            "maintenances": [],
+            "hostid": "10084",
+            "proxy_hostid": "0",
+            "host": "Zabbix server",
+            "status": "0",
+            "disable_until": "0",
+            "error": "",
+            "available": "1",
+            "errors_from": "0",
+            "lastaccess": "0",
+            "ipmi_authtype": "-1",
+            "ipmi_privilege": "2",
+            "ipmi_username": "",
+            "ipmi_password": "",
+            "ipmi_disable_until": "0",
+            "ipmi_available": "0",
+            "snmp_disable_until": "0",
+            "snmp_available": "0",
+            "maintenanceid": "0",
+            "maintenance_status": "0",
+            "maintenance_type": "0",
+            "maintenance_from": "0",
+            "ipmi_errors_from": "0",
+            "snmp_errors_from": "0",
+            "ipmi_error": "",
+            "snmp_error": "",
+            "jmx_disable_until": "0",
+            "jmx_available": "0",
+            "jmx_errors_from": "0",
+            "jmx_error": "",
+            "name": "Zabbix server",
+            "flags": "0",
+            "templateid": "0",
+            "groups":[{"groupid": "4"}]
+        },{
+            "maintenances": [],
+            "hostid": "10105",
+            "proxy_hostid": "0",
+            "host": "test1",
+            "status": "0",
+            "disable_until": "0",
+            "error": "",
+            "available": "1",
+            "errors_from": "0",
+            "lastaccess": "0",
+            "ipmi_authtype": "0",
+            "ipmi_privilege": "2",
+            "ipmi_username": "",
+            "ipmi_password": "",
+            "ipmi_disable_until": "0",
+            "ipmi_available": "0",
+            "snmp_disable_until": "0",
+            "snmp_available": "0",
+            "maintenanceid": "0",
+            "maintenance_status": "0",
+            "maintenance_type": "0",
+            "maintenance_from": "0",
+            "ipmi_errors_from": "0",
+            "snmp_errors_from": "0",
+            "ipmi_error": "",
+            "snmp_error": "",
+            "jmx_disable_until": "0",
+            "jmx_available": "0",
+            "jmx_errors_from": "0",
+            "jmx_error": "",
+            "name": "test1",
+            "flags": "0",
+            "templateid": "0",
+            "groups": [{"groupid": "2"}]
+        }, {
+            "maintenances": [],
+            "hostid": "10106",
+            "proxy_hostid": "0",
+            "host": "test2",
+            "status": "0",
+            "disable_until": "0",
+            "error": "",
+            "available": "1",
+            "errors_from": "0",
+            "lastaccess": "0",
+            "ipmi_authtype": "0",
+            "ipmi_privilege": "2",
+            "ipmi_username": "",
+            "ipmi_password": "",
+            "ipmi_disable_until": "0",
+            "ipmi_available": "0",
+            "snmp_disable_until": "0",
+            "snmp_available": "0",
+            "maintenanceid": "0",
+            "maintenance_status": "0",
+            "maintenance_type": "0",
+            "maintenance_from": "0",
+            "ipmi_errors_from": "0",
+            "snmp_errors_from": "0",
+            "ipmi_error": "",
+            "snmp_error": "",
+            "jmx_disable_until": "0",
+            "jmx_available": "0",
+            "jmx_errors_from": "0",
+            "jmx_error": "",
+            "name": "test2",
+            "flags": "0",
+            "templateid": "0",
+            "groups": [{"groupid": "2"}]
+        }]
         return msg
 
-    def __handler_apiinfo_version(self, params, req_id):
-        logger.info("Got APIInfo version (id: %s)" % req_id)
-        msg = {
-            "jsonrpc": "2.0",
-            "result": "2.0.5",
-            "id": req_id,
-        }
+
+    def __handler_hostgroup_get(self, params):
+        msg = [{
+            "groupid": "2",
+            "name": "Linux servers",
+            "internal": "0",
+            "flags": "0"
+        }, {
+            "groupid": "4",
+            "name": "Zabbix servers",
+            "internal": "0",
+            "flags": "0"
+        }]
         return msg
+
+    def __handler_trigger_get(self, params):
+        if params["output"] == "extend":
+            return trigger_params.extend
+        elif params["output"] == ["description",]:
+            return trigger_params.description
+        assert False, "Unknown output: %s" % params["output"]
+
 
     def get_token(self, params):
         # This is too easy implementaion
@@ -141,6 +275,9 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
     post_handlers = {
         "user.authenticate": __handler_user_authenticate,
         "apiinfo.version": __handler_apiinfo_version,
+        "host.get": __handler_host_get,
+        "hostgroup.get": __handler_hostgroup_get,
+        "trigger.get": __handler_trigger_get,
     }
 
 
