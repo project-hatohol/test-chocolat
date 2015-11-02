@@ -98,7 +98,6 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         return not method in ("user.authenticate", "apiinfo.version")
 
     def __check_token(self, body):
-        print json.dumps(body)
         token = self.__get_element_with_check(body, "auth")
         if token is None:
             self.wfile.write(json.dumps(self.__invalid_json_response()))
@@ -257,11 +256,24 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         return msg
 
     def __handler_trigger_get(self, params):
-        if params["output"] == "extend":
-            return trigger_params.extend
-        elif params["output"] == ["description",]:
-            return trigger_params.description
-        assert False, "Unknown output: %s" % params["output"]
+        triggerids = params.get("triggerids")
+        if triggerids is not None:
+            triggerid_set = set(triggerids)
+
+        result = []
+        for trigger in trigger_params.extend:
+            if triggerids is not None:
+                if not trigger["triggerid"] in triggerid_set:
+                    continue
+            if params["output"] == "extend":
+                result.append(trigger)
+                continue
+
+            items = {"triggerid": trigger["triggerid"]}
+            for item_name in params["output"]:
+                items[item_name] = trigger[item_name]
+            result.append(items)
+        return result
 
     def __handler_event_get(self, params):
         return event_data.result
