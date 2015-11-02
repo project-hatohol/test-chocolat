@@ -8,6 +8,7 @@ import SocketServer
 import json
 import trigger_params
 import event_data
+import copy
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(stream=sys.stdout))
@@ -276,7 +277,17 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         return result
 
     def __handler_event_get(self, params):
-        return event_data.result
+        assert params.get("eventid_till") is None, "Not supported yet."
+        eventid_from = params["eventid_from"]
+        if eventid_from is None:
+            return event_data.result
+
+        result = []
+        for idx, event in enumerate(event_data.result):
+            event = copy.copy(event)
+            event["eventid"] = str(eventid_from + idx)
+            result.append(event)
+        return result
 
     def get_token(self, params):
         # This is too easy implementaion
