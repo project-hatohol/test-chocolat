@@ -278,6 +278,7 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
     def __handler_event_get(self, params):
         assert params.get("eventid_till") is None, "Not supported yet."
+        logger.debug("event.get: params: %s" % params)
         eventid_from = params["eventid_from"]
         if eventid_from is None:
             return event_data.result
