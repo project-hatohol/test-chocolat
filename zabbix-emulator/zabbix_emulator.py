@@ -7,6 +7,7 @@ import SimpleHTTPServer
 import SocketServer
 import json
 import trigger_params
+import event_data
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(stream=sys.stdout))
@@ -262,6 +263,8 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             return trigger_params.description
         assert False, "Unknown output: %s" % params["output"]
 
+    def __handler_event_get(self, params):
+        return event_data.result
 
     def get_token(self, params):
         # This is too easy implementaion
@@ -278,6 +281,7 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         "host.get": __handler_host_get,
         "hostgroup.get": __handler_hostgroup_get,
         "trigger.get": __handler_trigger_get,
+        "event.get": __handler_event_get,
     }
 
 
