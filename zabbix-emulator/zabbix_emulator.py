@@ -8,7 +8,7 @@ import SocketServer
 import json
 import trigger_params
 import event_data
-import copy
+import emulator
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(stream=sys.stdout))
@@ -277,16 +277,18 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         return result
 
     def __handler_event_get(self, params):
-        assert params.get("eventid_till") is None, "Not supported yet."
-        logger.debug("event.get: params: %s" % params)
-        eventid_from = params["eventid_from"]
+        eventid_from = params.get("eventid_from")
         if eventid_from is None:
-            return event_data.result
+            eventid_from = 1
+        eventid_till = params.get("eventid_till")
+        if eventid_till is None:
+            eventid_till = emulator.get_num_events(eventid_from)
 
+        logger.debug("event.get: params: %s" % params)
         result = []
-        for idx, event in enumerate(event_data.result):
-            event = copy.copy(event)
-            event["eventid"] = str(eventid_from + idx)
+        for eventid in range(eventid_from, eventid_till+1):
+            event = emulator.generate_event(eventid)
+            event["eventid"] = str(eventid)
             result.append(event)
         return result
 
