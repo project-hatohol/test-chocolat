@@ -6,6 +6,7 @@ import sys
 import traceback
 import time
 import signal
+import re
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(stream=sys.stdout))
@@ -17,6 +18,12 @@ class Manager(object):
         self.__args = args
         self.__proc_zabbix_emu = None
         self.__proc_simple_sv = None
+        self.__hap2_zabbix_api = None
+        self.__subprocs = [
+            self.__proc_zabbix_emu,
+            self.__proc_simple_sv,
+            self.__hap2_zabbix_api,
+        ]
 
         signal.signal(signal.SIGCHLD, self.__child_handler)
 
@@ -27,42 +34,91 @@ class Manager(object):
             logger.info("Terminate: PID: %s" % proc.pid)
             proc.terminate()
 
-        for proc in (self.__proc_zabbix_emu, self.__proc_simple_sv):
+        for proc in self.__subprocs:
             terminate(proc)
 
     def __child_handler(self, signum, frame):
-        logger.error("Got SIGCHLD: %s")
+        logger.error("Got SIGCHLD")
         assert False
 
     def __call__(self):
-        # boot zabbix_emulator
-        zabbix_emulator_args = "%s" % self.__args.zabbix_emulator_path
-        kw = {
+        self.__launch_zabbix_emulator()
+        self.__launch_simple_server()
+        self.__launch_hap2_zabbix_api()
+
+        while True:
+            print self.__proc_simple_sv.stdout.readline().rstrip()
+
+
+    def __launch_zabbix_emulator(self):
+        args = "%s" % self.__args.zabbix_emulator_path
+        kwargs = {
             "stdout": self.__args.zabbix_emulator_log,
             "stderr": subprocess.STDOUT,
         }
-        self.__proc_zabbix_emu = subprocess.Popen(zabbix_emulator_args, **kw)
+        self.__proc_zabbix_emu = subprocess.Popen(args, **kwargs)
         logger.info("Launched zabbix emulator: PID: %s" % \
                     self.__proc_zabbix_emu.pid)
 
-        # boot simple_server
+    def __launch_simple_server(self):
         simple_server_args = "%s" % self.__args.simple_server_path
-        self.__proc_simple_sv = subprocess.Popen(simple_server_args)
+        kw = {
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.STDOUT,
+        }
+        self.__proc_simple_sv = subprocess.Popen(simple_server_args, **kw)
         logger.info("Launched simple server: PID: %s" % \
                     self.__proc_simple_sv.pid)
 
-        time.sleep(1000) # temporary
+        self.__wait_for_ready_of_simple_server()
+
+    def __launch_hap2_zabbix_api(self):
+        args = "%s" % self.__args.hap2_zabbix_api_path
+        kwargs = {
+            "stdout": self.__args.hap2_zabbix_api_log,
+            "stderr": subprocess.STDOUT,
+        }
+        self.__hap2_zabbix_api = subprocess.Popen(args, **kwargs)
+        logger.info("Launched hap2_zabbix_api: PID: %s" % \
+                    self.__hap2_zabbix_api.pid)
+
+    def __wait_for_ready_of_simple_server(self):
+        # I don't know the reason why any two characters after the number (pid)
+        # is required.
+        re_dispatcher = re.compile("deamonized: \d+..(Dispatcher)")
+        re_receiver = re.compile("deamonized: \d+..(Receiver)")
+        found_dispatcher_msg = False
+        found_receiver_msg = False
+        while not found_dispatcher_msg or not found_receiver_msg:
+            line = self.__proc_simple_sv.stdout.readline().rstrip()
+            msg = self.__extract_message(line)
+            if re_dispatcher.match(msg) is not None:
+                found_dispatcher_msg = True
+                logger.info("Found simple_sever:dispatcher line.")
+            elif re_receiver.match(msg) is not None:
+                found_receiver_msg = True
+                logger.info("Found simple_sever:receiver line.")
+
+    def __extract_message(self, line):
+        maxsplit = 2
+        severity, component, msg = line.split(":", maxsplit)
+        return msg
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-z", "--zabbix-emulator-path", type=str,
                         default="zabbix_emulator.py")
-    parser.add_argument("-s", "--simple-server-path", type=str,
-                        default="simple_server.py")
-    parser.add_argument("-l", "--zabbix-emulator-log",
+    parser.add_argument("-Z", "--zabbix-emulator-log",
                         type=argparse.FileType('w'),
                         default="zabbix-emulator.log")
+    parser.add_argument("-a", "--hap2-zabbix-api-path", type=str,
+                        default="hap2_zabbix_api.py")
+    parser.add_argument("-A", "--hap2-zabbix-api-log",
+                        type=argparse.FileType('w'),
+                        default="hap2-zabbix-api.log")
+    parser.add_argument("-s", "--simple-server-path", type=str,
+                        default="simple_server.py")
     args = parser.parse_args()
 
     manager = Manager(args)
@@ -71,6 +127,8 @@ def main():
 if __name__ == "__main__":
     try:
         main()
+    except SystemExit:
+        pass
     except:
         logger.error("------- GOT Exception ------")
         logger.error(traceback.format_exc())
