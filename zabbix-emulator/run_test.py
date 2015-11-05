@@ -7,6 +7,7 @@ import traceback
 import time
 import signal
 import re
+import json
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(stream=sys.stdout))
@@ -60,13 +61,33 @@ class Manager(object):
         logger.info("Launched zabbix emulator: PID: %s" % \
                     self.__proc_zabbix_emu.pid)
 
+    def __generate_ms_info_file(self):
+        ms_info = {
+            "serverId": 1,
+            "url": "http://localhost/zabbix/api_jsonrpc.php",
+            "type": "8e632c14-d1f7-11e4-8350-d43d7e3146fb",
+            "nickName": "HAP test server",
+            "userName": "Admin",
+            "password": "zabbix",
+            "pollingIntervalSec": 30,
+            "retryIntervalSec": 10,
+            "extendedInfo": "",
+        }
+        f = self.__args.ms_info_file
+        f.write(json.dumps(ms_info))
+        f.close()
+
     def __launch_simple_server(self):
-        simple_server_args = "%s" % self.__args.simple_server_path
-        kw = {
+        self.__generate_ms_info_file()
+        args = [
+            "%s" % self.__args.simple_server_path,
+            "--ms-info", self.__args.ms_info_file.name,
+        ]
+        kwargs = {
             "stdout": subprocess.PIPE,
             "stderr": subprocess.STDOUT,
         }
-        self.__proc_simple_sv = subprocess.Popen(simple_server_args, **kw)
+        self.__proc_simple_sv = subprocess.Popen(args, **kwargs)
         logger.info("Launched simple server: PID: %s" % \
                     self.__proc_simple_sv.pid)
 
@@ -119,6 +140,9 @@ def main():
                         default="hap2-zabbix-api.log")
     parser.add_argument("-s", "--simple-server-path", type=str,
                         default="simple_server.py")
+    parser.add_argument("-m", "--ms-info-file", type=argparse.FileType('w'),
+                        help="MonitoringServerInfo file path that is created by this program",
+                        default="ms-info.json")
     args = parser.parse_args()
 
     manager = Manager(args)
