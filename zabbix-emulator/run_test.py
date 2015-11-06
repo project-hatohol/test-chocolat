@@ -57,8 +57,81 @@ class Manager(object):
         self.__launch_simple_server()
         self.__launch_hap2_zabbix_api()
 
+        handlers = {
+            "exchangeProfile": self.__handler_exchangeProfile,
+            "putEvents": self.__handler_put_event,
+            "putTriggers": self.__handler_put_triggers,
+            "putHosts": self.__handler_put_hosts,
+            "putHostGroups": self.__handler_put_host_groups,
+            "putHostGroupMembership": self.__handler_put_host_group_membership,
+            "putArmInfo": self.__handler_put_arm_info,
+            "getMonitoringServerInfo": self.__handler_get_ms_info,
+            "getLastInfo": self.__handler_get_last_info,
+        }
+
         while True:
-            print self.__proc_simple_sv.stdout.readline().rstrip()
+            method = self.__parse_method()
+            if method is None:
+                continue
+            handler = handlers.get(method)
+            if handler is None:
+                logger.warn("No handler for: %s" % method)
+                continue
+            handler()
+
+    def __handler_get_ms_info(self):
+        print "get_monitoring_server_info"
+
+    def __handler_exchangeProfile(self):
+        print self.__read_one_line() # body
+
+    def __handler_get_last_info(self):
+        print "get_last_info"
+        self.__read_one_line() # body
+
+    def __handler_put_event(self):
+        print "put_event"
+        self.__read_one_line() # summary
+        self.__read_one_line() # body
+
+    def __handler_put_triggers(self):
+        print "put_triggers"
+        self.__read_one_line() # body
+
+    def __handler_put_hosts(self):
+        print "put_hosts"
+        self.__read_one_line() # body
+
+    def __handler_put_host_groups(self):
+        print "put_host_groups"
+        self.__read_one_line() # body
+
+    def __handler_put_host_group_membership(self):
+        print "put_host_group_membership"
+        self.__read_one_line() # body
+
+    def __handler_put_arm_info(self):
+        print "put_arm_info"
+        self.__read_one_line()
+
+    def __read_one_line(self):
+        return self.__proc_simple_sv.stdout.readline().strip()
+
+    def __handler_null_read(self):
+        print "null read"
+
+    def __parse_method(self):
+        line = self.__proc_simple_sv.stdout.readline().rstrip()
+        msg = self.__extract_message(line)
+        try:
+            key, method = msg.split(":", 1)
+        except ValueError:
+            logger.warn("Ignored unexpected line: %s" % line)
+            return None
+        if key != "method":
+            logger.warn("Ignored unexpected message: %s" % msg)
+            return None
+        return method.strip()
 
     def __launch(self, args, kwargs):
         self.__in_launch = True
