@@ -137,7 +137,11 @@ class Manager(object):
 
     def __extract_message(self, line):
         maxsplit = 2
-        severity, component, msg = line.split(":", maxsplit)
+        try:
+            severity, component, msg = line.split(":", maxsplit)
+        except:
+            logger.error("Failed to split: %s" % line)
+            raise
         return msg
 
 
