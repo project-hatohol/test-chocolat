@@ -20,6 +20,7 @@ class Manager(object):
         self.__proc_zabbix_emu = None
         self.__proc_simple_sv = None
         self.__hap2_zabbix_api = None
+        self.__in_launch = False
 
         signal.signal(signal.SIGCHLD, self.__child_handler)
 
@@ -41,6 +42,8 @@ class Manager(object):
             terminate(proc)
 
     def __child_handler(self, signum, frame):
+        if self.__in_launch:
+            return
         logger.error("Got SIGCHLD")
         for proc in self.__subprocs():
             if proc is None:
@@ -58,7 +61,9 @@ class Manager(object):
             print self.__proc_simple_sv.stdout.readline().rstrip()
 
     def __launch(self, args, kwargs):
+        self.__in_launch = True
         subproc = subprocess.Popen(args, **kwargs)
+        self.__in_launch = False
         if isinstance(args, list):
             progname = args[0]
         else:
@@ -101,9 +106,7 @@ class Manager(object):
             "stdout": subprocess.PIPE,
             "stderr": subprocess.STDOUT,
         }
-        self.__proc_simple_sv = subprocess.Popen(args, **kwargs)
-        logger.info("Launched simple server: PID: %s" % \
-                    self.__proc_simple_sv.pid)
+        self.__proc_simple_sv = self.__launch(args, kwargs)
 
         self.__wait_for_ready_of_simple_server()
 
@@ -113,9 +116,7 @@ class Manager(object):
             "stdout": self.__args.hap2_zabbix_api_log,
             "stderr": subprocess.STDOUT,
         }
-        self.__hap2_zabbix_api = subprocess.Popen(args, **kwargs)
-        logger.info("Launched hap2_zabbix_api: PID: %s" % \
-                    self.__hap2_zabbix_api.pid)
+        self.__hap2_zabbix_api = self.__launch(args, kwargs)
 
     def __wait_for_ready_of_simple_server(self):
         # I don't know the reason why any two characters after the number (pid)
