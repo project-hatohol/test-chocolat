@@ -20,13 +20,15 @@ class Manager(object):
         self.__proc_zabbix_emu = None
         self.__proc_simple_sv = None
         self.__hap2_zabbix_api = None
-        self.__subprocs = [
+
+        signal.signal(signal.SIGCHLD, self.__child_handler)
+
+    def __subprocs(self):
+        return (
             self.__proc_zabbix_emu,
             self.__proc_simple_sv,
             self.__hap2_zabbix_api,
-        ]
-
-        signal.signal(signal.SIGCHLD, self.__child_handler)
+        )
 
     def __del__(self):
         def terminate(proc):
@@ -35,11 +37,16 @@ class Manager(object):
             logger.info("Terminate: PID: %s" % proc.pid)
             proc.terminate()
 
-        for proc in self.__subprocs:
+        for proc in self.__subprocs():
             terminate(proc)
 
     def __child_handler(self, signum, frame):
         logger.error("Got SIGCHLD")
+        for proc in self.__subprocs():
+            if proc is None:
+                continue
+            proc.poll()
+            logger.info("PID: %s, ret.code: %s" % (proc.pid, proc.returncode))
         assert False
 
     def __call__(self):
@@ -50,6 +57,15 @@ class Manager(object):
         while True:
             print self.__proc_simple_sv.stdout.readline().rstrip()
 
+    def __launch(self, args, kwargs):
+        subproc = subprocess.Popen(args, **kwargs)
+        if isinstance(args, list):
+            progname = args[0]
+        else:
+            progname = args
+        logger.info("Launched %s: PID: %s" % (progname, subproc.pid))
+        return subproc
+
 
     def __launch_zabbix_emulator(self):
         args = "%s" % self.__args.zabbix_emulator_path
@@ -57,14 +73,12 @@ class Manager(object):
             "stdout": self.__args.zabbix_emulator_log,
             "stderr": subprocess.STDOUT,
         }
-        self.__proc_zabbix_emu = subprocess.Popen(args, **kwargs)
-        logger.info("Launched zabbix emulator: PID: %s" % \
-                    self.__proc_zabbix_emu.pid)
+        self.__proc_zabbix_emu = self.__launch(args, kwargs)
 
     def __generate_ms_info_file(self):
         ms_info = {
             "serverId": 1,
-            "url": "http://localhost/zabbix/api_jsonrpc.php",
+            "url": "http://localhost:8000/zabbix/api_jsonrpc.php",
             "type": "8e632c14-d1f7-11e4-8350-d43d7e3146fb",
             "nickName": "HAP test server",
             "userName": "Admin",
