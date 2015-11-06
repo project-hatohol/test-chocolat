@@ -12,4 +12,4 @@ def generate_event(eventid):
     return base_event
 
 def get_num_events(eventid):
-    return SAMPLE_EVENT_PERIOD - 1
+    return eventid + SAMPLE_EVENT_PERIOD - 1

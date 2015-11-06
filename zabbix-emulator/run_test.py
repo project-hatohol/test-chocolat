@@ -8,6 +8,7 @@ import time
 import signal
 import re
 import json
+import ast
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(stream=sys.stdout))
@@ -90,13 +91,13 @@ class Manager(object):
         self.__read_one_line() # body
 
     def __handler_put_event(self):
-        print "put_event"
         self.__read_one_line() # summary
-        self.__read_one_line() # body
+        event = ast.literal_eval(self.__read_msg())
+        print "put_event: # of %s" % len(event["events"])
 
     def __handler_put_triggers(self):
-        print "put_triggers"
-        self.__read_one_line() # body
+        trig = ast.literal_eval(self.__read_msg())
+        print "put_triggers: # of %s" % len(trig["triggers"])
 
     def __handler_put_hosts(self):
         print "put_hosts"
@@ -111,8 +112,11 @@ class Manager(object):
         self.__read_one_line() # body
 
     def __handler_put_arm_info(self):
-        print "put_arm_info"
-        self.__read_one_line()
+        #print "put_arm_info"
+        print self.__read_one_line()
+
+    def __read_msg(self):
+        return self.__extract_message(self.__read_one_line())
 
     def __read_one_line(self):
         return self.__proc_simple_sv.stdout.readline().strip()
@@ -161,7 +165,7 @@ class Manager(object):
             "nickName": "HAP test server",
             "userName": "Admin",
             "password": "zabbix",
-            "pollingIntervalSec": 30,
+            "pollingIntervalSec": 5,
             "retryIntervalSec": 10,
             "extendedInfo": "",
         }
