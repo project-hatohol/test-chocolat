@@ -199,7 +199,7 @@ class Manager(object):
         found_dispatcher_msg = False
         found_receiver_msg = False
         while not found_dispatcher_msg or not found_receiver_msg:
-            line = self.__proc_simple_sv.stdout.readline().rstrip()
+            line = self.__read_one_line()
             msg = self.__extract_message(line)
             if re_dispatcher.match(msg) is not None:
                 found_dispatcher_msg = True
