@@ -1,0 +1,2 @@
+- Example to run the test.
+PYTHONPATH=/home/kyamato/hatohol/server/hap2 /home/kyamato/testau-chocolat/hap2-load-test/run_test.py -z /home/kyamato/testau-chocolat/hap2-load-test/zabbix_emulator.py -s /home/kyamato/hatohol/server/hap2/hatohol/simple_server.py -a /home/kyamato/hatohol/server/hap2/hatohol/hap2_zabbix_api.py
