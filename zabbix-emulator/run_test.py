@@ -9,6 +9,7 @@ import signal
 import re
 import json
 import ast
+import emulator
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(stream=sys.stdout))
@@ -22,6 +23,7 @@ class Manager(object):
         self.__proc_simple_sv = None
         self.__hap2_zabbix_api = None
         self.__in_launch = False
+        self.__last_eventid = 0
 
         signal.signal(signal.SIGCHLD, self.__child_handler)
 
@@ -93,7 +95,21 @@ class Manager(object):
     def __handler_put_event(self):
         self.__read_one_line() # summary
         event = ast.literal_eval(self.__read_msg())
-        print "put_event: # of %s" % len(event["events"])
+        print "put_event: # of %s, prev ID: %s" % \
+              (len(event["events"]), self.__last_eventid)
+        for event in event["events"]:
+            self.__check_event(event)
+
+    def __check_event(self, event):
+        expected_eventid = self.__last_eventid + 1
+        eventid = int(event["eventId"])
+        assert expected_eventid == eventid, \
+               "expected: %s, eventid: %s" % (expected_eventid, eventid)
+        self.__last_eventid = eventid
+
+        logger.info(event)
+        logger.info(emulator.generate_event(eventid))
+        assert event == emulator.generate_event(eventid)
 
     def __handler_put_triggers(self):
         trig = ast.literal_eval(self.__read_msg())
