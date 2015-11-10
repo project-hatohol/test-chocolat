@@ -6,7 +6,7 @@ import cgi
 import SimpleHTTPServer
 import SocketServer
 import json
-import trigger_params
+import trigger_data
 import event_data
 import emulator
 
@@ -262,7 +262,7 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             triggerid_set = set(triggerids)
 
         result = []
-        for trigger in trigger_params.extend:
+        for trigger in trigger_data.extend:
             if triggerids is not None:
                 if not trigger["triggerid"] in triggerid_set:
                     continue

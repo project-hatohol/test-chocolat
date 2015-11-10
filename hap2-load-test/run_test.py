@@ -10,6 +10,7 @@ import re
 import json
 import ast
 import emulator
+import trigger_data
 
 logger = logging.getLogger("simple_server")
 logger.addHandler(logging.StreamHandler(stream=sys.stdout))
@@ -61,6 +62,10 @@ class Manager(object):
         "1": "BAD",
         "2": "UNKNOWN",
         "3": "NOTIFICATION",
+    }
+
+    SEVERITY_MAP = {
+        "3": "ERROR",
     }
 
     def __init__(self, args):
@@ -159,8 +164,13 @@ class Manager(object):
         self.__check("triggerId", event["triggerId"], expected["objectid"])
         self.__check("type", event["type"],
                      self.EVENT_VALUE_MAP[expected["value"]])
+        self.__check("hostId", event["hostId"], expected["hosts"][0]["hostid"])
 
-        assert event == emulator.generate_event(eventid)
+        expected_trigger = trigger_data.find(event["triggerId"])
+        self.__check("severity", event["severity"],
+                     self.SEVERITY_MAP[expected_trigger["priority"]])
+
+        assert False
 
     def __check(self, label, expected, actual):
         if expected != actual:

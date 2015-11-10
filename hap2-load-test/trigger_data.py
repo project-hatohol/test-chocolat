@@ -1440,4 +1440,16 @@ extend = [{
     "value_flags": "0"
 }]
 
+_index = None
+
+def get_index(self):
+    if _index is not None:
+        return _index
+    _index = {}
+    for trig in extend:
+        _index[trig["triggerid"]] = trig
+    return _index
+
+def find(triggerid):
+    return get_index()[triggerid]
 
