@@ -11,12 +11,58 @@ import json
 import ast
 import emulator
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("simple_server")
 logger.addHandler(logging.StreamHandler(stream=sys.stdout))
 logger.setLevel(logging.INFO)
 
+SIMPLE_SERVER_LOG_CONF = """
+[loggers]
+keys=root,hatohol
+
+[handlers]
+keys=streamHandler,fileHandler
+
+[formatters]
+keys=form01,form02
+
+[logger_root]
+level=INFO
+handlers=streamHandler
+
+[logger_hatohol]
+level=INFO
+handlers=fileHandler
+propagate=1
+qualname=hatohol
+
+[handler_streamHandler]
+class=StreamHandler
+level=INFO
+formatter=form01
+args=(sys.stdout,)
+
+[handler_fileHandler]
+class=FileHandler
+level=INFO
+formatter=form02
+args=('simple_server.log', 'w')
+
+[formatter_form01]
+format=%(levelname)s:%(process)d:%(message)s
+
+[formatter_form02]
+format=%(asctime)s %(levelname)s %(process)d %(message)s
+"""
 
 class Manager(object):
+
+    EVENT_VALUE_MAP = {
+        "0": "GOOD",
+        "1": "BAD",
+        "2": "UNKNOWN",
+        "3": "NOTIFICATION",
+    }
+
     def __init__(self, args):
         self.__args = args
         self.__proc_zabbix_emu = None
@@ -108,8 +154,19 @@ class Manager(object):
         self.__last_eventid = eventid
 
         logger.info(event)
-        logger.info(emulator.generate_event(eventid))
+        expected = emulator.generate_event(eventid)
+        logger.info(expected)
+        self.__check("triggerId", event["triggerId"], expected["objectid"])
+        self.__check("type", event["type"],
+                     self.EVENT_VALUE_MAP[expected["value"]])
+
         assert event == emulator.generate_event(eventid)
+
+    def __check(self, label, expected, actual):
+        if expected != actual:
+            logger.error("Failed to verify '%s', exp: %s, act: %s" %
+                         (label, expect, actual))
+            raise AssertionError
 
     def __handler_put_triggers(self):
         trig = ast.literal_eval(self.__read_msg())
@@ -141,7 +198,7 @@ class Manager(object):
         print "null read"
 
     def __parse_method(self):
-        line = self.__proc_simple_sv.stdout.readline().rstrip()
+        line = self.__read_one_line()
         msg = self.__extract_message(line)
         try:
             key, method = msg.split(":", 1)
@@ -189,11 +246,18 @@ class Manager(object):
         f.write(json.dumps(ms_info))
         f.close()
 
+    def __generate_simple_sv_log_conf(self):
+        f = self.__args.simple_server_log_conf
+        f.write(SIMPLE_SERVER_LOG_CONF)
+        f.close()
+
     def __launch_simple_server(self):
         self.__generate_ms_info_file()
+        self.__generate_simple_sv_log_conf()
         args = [
             "%s" % self.__args.simple_server_path,
             "--ms-info", self.__args.ms_info_file.name,
+            "--log-conf", self.__args.simple_server_log_conf.name,
         ]
         kwargs = {
             "stdout": subprocess.PIPE,
@@ -252,6 +316,9 @@ def main():
                         default="hap2-zabbix-api.log")
     parser.add_argument("-s", "--simple-server-path", type=str,
                         default="simple_server.py")
+    parser.add_argument("-c", "--simple-server-log-conf",
+                        type=argparse.FileType('w'),
+                        default="simple-server-log.conf")
     parser.add_argument("-m", "--ms-info-file", type=argparse.FileType('w'),
                         help="MonitoringServerInfo file path that is created by this program",
                         default="ms-info.json")
