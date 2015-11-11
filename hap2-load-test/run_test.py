@@ -164,9 +164,7 @@ class Manager(object):
                "expected: %s, eventid: %s" % (expected_eventid, eventid)
         self.__last_eventid = eventid
 
-        logger.info(event)
         expected = emulator.generate_event(eventid)
-        logger.info(expected)
         self.__check("triggerId", event["triggerId"], expected["objectid"])
         self.__check("type", event["type"],
                      self.EVENT_TYPE_MAP[expected["value"]])
@@ -267,7 +265,7 @@ class Manager(object):
             "nickName": "HAP test server",
             "userName": "Admin",
             "password": "zabbix",
-            "pollingIntervalSec": 5,
+            "pollingIntervalSec": self.__args.polling_interval,
             "retryIntervalSec": 10,
             "extendedInfo": "",
         }
@@ -352,6 +350,8 @@ def main():
                         help="MonitoringServerInfo file path that is created by this program",
                         default="ms-info.json")
     parser.add_argument("-N", "--ignore-ns", action="store_true")
+    parser.add_argument("-p", "--polling-interval", type=int, default=5,
+                        help="Polling interval in sec.")
     args = parser.parse_args()
 
     manager = Manager(args)
