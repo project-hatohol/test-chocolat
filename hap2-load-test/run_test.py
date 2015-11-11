@@ -57,14 +57,20 @@ format=%(asctime)s %(levelname)s %(process)d %(message)s
 
 class Manager(object):
 
-    EVENT_VALUE_MAP = {
+    EVENT_TYPE_MAP = {
         "0": "GOOD",
         "1": "BAD",
         "2": "UNKNOWN",
         "3": "NOTIFICATION",
     }
 
+    EVENT_STATUS_MAP = {
+        "0": "OK",
+    }
+
     SEVERITY_MAP = {
+        "1": "INFO",
+        "2": "WARNING",
         "3": "ERROR",
     }
 
@@ -163,19 +169,32 @@ class Manager(object):
         logger.info(expected)
         self.__check("triggerId", event["triggerId"], expected["objectid"])
         self.__check("type", event["type"],
-                     self.EVENT_VALUE_MAP[expected["value"]])
+                     self.EVENT_TYPE_MAP[expected["value"]])
         self.__check("hostId", event["hostId"], expected["hosts"][0]["hostid"])
+        self.__check("hostName", event["hostName"], expected["hosts"][0]["name"])
 
         expected_trigger = trigger_data.find(event["triggerId"])
+        self.__check("status", event["status"],
+                     self.EVENT_STATUS_MAP[expected_trigger["state"]])
         self.__check("severity", event["severity"],
                      self.SEVERITY_MAP[expected_trigger["priority"]])
+        self.__check("brief", event["brief"], expected_trigger["description"])
 
-        assert False
+        # time
+        expected_time = \
+            time.strftime("%Y%m%d%H%M%S", time.gmtime(float(expected["clock"])))
+        actual_time = event["time"]
+        if self.__args.ignore_ns:
+            actual_time = actual_time.split(".")[0]
+        else:
+            expected_time += "." + expected["ns"]
+        self.__check("time", actual_time, expected_time)
+
 
     def __check(self, label, expected, actual):
         if expected != actual:
             logger.error("Failed to verify '%s', exp: %s, act: %s" %
-                         (label, expect, actual))
+                         (label, expected, actual))
             raise AssertionError
 
     def __handler_put_triggers(self):
@@ -332,6 +351,7 @@ def main():
     parser.add_argument("-m", "--ms-info-file", type=argparse.FileType('w'),
                         help="MonitoringServerInfo file path that is created by this program",
                         default="ms-info.json")
+    parser.add_argument("-N", "--ignore-ns", action="store_true")
     args = parser.parse_args()
 
     manager = Manager(args)

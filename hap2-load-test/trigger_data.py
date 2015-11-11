@@ -1442,7 +1442,8 @@ extend = [{
 
 _index = None
 
-def get_index(self):
+def get_index():
+    global _index
     if _index is not None:
         return _index
     _index = {}
