@@ -129,7 +129,8 @@ class Manager(object):
             "getLastInfo": self.__handler_get_last_info,
         }
 
-        while True:
+        count = 0L
+        while self.__args.loop_count == 0 or count < self.__args.loop_count:
             method = self.__parse_method()
             if method is None:
                 continue
@@ -138,6 +139,7 @@ class Manager(object):
                 logger.warn("No handler for: %s" % method)
                 continue
             handler()
+            count += 1
 
     def __handler_get_ms_info(self):
         print "get_monitoring_server_info"
@@ -164,6 +166,7 @@ class Manager(object):
                "expected: %s, eventid: %s" % (expected_eventid, eventid)
         self.__last_eventid = eventid
 
+        logger.info(event)
         expected = emulator.generate_event(eventid)
         self.__check("triggerId", event["triggerId"], expected["objectid"])
         self.__check("type", event["type"],
@@ -186,7 +189,7 @@ class Manager(object):
             actual_time = actual_time.split(".")[0]
         else:
             expected_time += "." + expected["ns"]
-        self.__check("time", actual_time, expected_time)
+        self.__check("time", expected_time, actual_time)
 
 
     def __check(self, label, expected, actual):
@@ -352,6 +355,8 @@ def main():
     parser.add_argument("-N", "--ignore-ns", action="store_true")
     parser.add_argument("-p", "--polling-interval", type=int, default=5,
                         help="Polling interval in sec.")
+    parser.add_argument("-l", "--loop-count", type=long, default=0,
+                        help="Count of pollings. 0 means infinite.")
     args = parser.parse_args()
 
     manager = Manager(args)
