@@ -188,7 +188,7 @@ class Manager(object):
         if self.__args.ignore_ns:
             actual_time = actual_time.split(".")[0]
         else:
-            expected_time += "." + expected["ns"]
+            expected_time += ".%09d" % int(expected["ns"])
         self.__check("time", expected_time, actual_time)
 
 
