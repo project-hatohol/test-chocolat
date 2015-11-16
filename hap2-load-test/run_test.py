@@ -59,7 +59,7 @@ class ActionBase(object):
     def launched_zabbix_emu(self, proc_zabbix_emu, *args, **kwargs):
         pass
 
-    def post_handle(self, count, *args, **kwargs):
+    def post_handle(self, *args, **kwargs):
         pass
 
 class ActionTeminateZabbixEmulator(ActionBase):
@@ -68,23 +68,41 @@ class ActionTeminateZabbixEmulator(ActionBase):
         self.__manager = manager
         self.__args = args
         self.__proc_zabbix_emu = None
+        self.reset()
+
+    def reset(self):
+        self.__count = 0
+        self.__recover_count = 0
 
     def launched_zabbix_emu(self, proc_zabbix_emu, *args, **kwargs):
         self.__proc_zabbix_emu = proc_zabbix_emu
 
-    def post_handle(self, count, *args, **kwargs):
+    def post_handle(self, *args, **kwargs):
         if self.__args.terminate_zabbix_emulator == 0:
             return
-        if count < self.__args.terminate_zabbix_emulator:
+        self.__count += 1
+        if self.__count < self.__args.terminate_zabbix_emulator:
             return
         if self.__proc_zabbix_emu is None:
             return
         if self.__proc_zabbix_emu.returncode is not None:
+            self.__recover()
             return
         logger.info("Terminate zabbix emulator (%d)" %
                     self.__proc_zabbix_emu.pid)
         self.__manager.set_expected_sigchild_pid(self.__proc_zabbix_emu.pid)
         self.__proc_zabbix_emu.terminate()
+
+    def __recover(self):
+        if self.__args.recover_zabbix_emulator == 0:
+            return
+
+        self.__recover_count += 1
+        logger.info("Recover count: %d" % self.__recover_count)
+        if self.__recover_count < self.__args.recover_zabbix_emulator:
+            return
+        self.reset()
+        self.__manager.launch_zabbix_emulator()
 
 
 class Manager(object):
@@ -158,7 +176,7 @@ class Manager(object):
         assert False
 
     def __call__(self):
-        self.__launch_zabbix_emulator()
+        self.launch_zabbix_emulator()
         self.__launch_simple_server()
         self.__launch_hap2_zabbix_api()
 
@@ -184,7 +202,7 @@ class Manager(object):
                 logger.warn("No handler for: %s" % method)
                 continue
             handler()
-            self.__call_actions("post_handle", count)
+            self.__call_actions("post_handle")
             count += 1
 
     def __call_actions(self, method, *args, **kwargs):
@@ -302,7 +320,7 @@ class Manager(object):
         return subproc
 
 
-    def __launch_zabbix_emulator(self):
+    def launch_zabbix_emulator(self):
         args = "%s" % self.__args.zabbix_emulator_path
         kwargs = {
             "stdout": self.__args.zabbix_emulator_log,
@@ -411,6 +429,9 @@ def main():
     parser.add_argument("-T", "--terminate-zabbix-emulator",
                         type=long, default=0,
                         help="Terminate zabbix emulator after the given count of messaging. 0 disables this feature.")
+    parser.add_argument("-R", "--recover-zabbix-emulator",
+                        type=long, default=0,
+                        help="Relaunch zabbix emulator after the terminateion after the given count since the death. 0 disables this feature.")
     args = parser.parse_args()
 
     manager = Manager(args)
