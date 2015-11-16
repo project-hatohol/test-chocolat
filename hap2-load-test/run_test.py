@@ -55,6 +55,38 @@ format=%(levelname)s:%(process)d:%(message)s
 format=%(asctime)s %(levelname)s %(process)d %(message)s
 """
 
+class ActionBase(object):
+    def launched_zabbix_emu(self, proc_zabbix_emu, *args, **kwargs):
+        pass
+
+    def post_handle(self, count, *args, **kwargs):
+        pass
+
+class ActionTeminateZabbixEmulator(ActionBase):
+    def __init__(self, manager, args):
+        logger.info("ActionTerminateZabbixEmulator: count: %d" % args.terminate_zabbix_emulator)
+        self.__manager = manager
+        self.__args = args
+        self.__proc_zabbix_emu = None
+
+    def launched_zabbix_emu(self, proc_zabbix_emu, *args, **kwargs):
+        self.__proc_zabbix_emu = proc_zabbix_emu
+
+    def post_handle(self, count, *args, **kwargs):
+        if self.__args.terminate_zabbix_emulator == 0:
+            return
+        if count < self.__args.terminate_zabbix_emulator:
+            return
+        if self.__proc_zabbix_emu is None:
+            return
+        if self.__proc_zabbix_emu.returncode is not None:
+            return
+        logger.info("Terminate zabbix emulator (%d)" %
+                    self.__proc_zabbix_emu.pid)
+        self.__manager.set_expected_sigchild_pid(self.__proc_zabbix_emu.pid)
+        self.__proc_zabbix_emu.terminate()
+
+
 class Manager(object):
 
     EVENT_TYPE_MAP = {
@@ -83,6 +115,10 @@ class Manager(object):
         self.__last_eventid = 0
         self.__expected_sigchild_pid = None
 
+        self.__actions = []
+        if args.terminate_zabbix_emulator > 0:
+            self.__actions.append(ActionTeminateZabbixEmulator(self, args))
+
         signal.signal(signal.SIGCHLD, self.__child_handler)
 
     def __subprocs(self):
@@ -101,6 +137,9 @@ class Manager(object):
 
         for proc in self.__subprocs():
             terminate(proc)
+
+    def set_expected_sigchild_pid(self, pid):
+        self.__expected_sigchild_pid = pid
 
     def __child_handler(self, signum, frame):
         if self.__in_launch:
@@ -145,22 +184,12 @@ class Manager(object):
                 logger.warn("No handler for: %s" % method)
                 continue
             handler()
-            self.__terminate_zabbix_emulater_if_needed(count)
+            self.__call_actions("post_handle", count)
             count += 1
 
-    def __terminate_zabbix_emulater_if_needed(self, count):
-        if self.__args.terminate_zabbix_emulator == 0:
-            return
-        if count < self.__args.terminate_zabbix_emulator:
-            return
-        if self.__proc_zabbix_emu is None:
-            return
-        if self.__proc_zabbix_emu.returncode is not None:
-            return
-        logger.info("Terminate zabbix emulator (%d)" %
-                    self.__proc_zabbix_emu.pid)
-        self.__expected_sigchild_pid = self.__proc_zabbix_emu.pid
-        self.__proc_zabbix_emu.terminate()
+    def __call_actions(self, method, *args, **kwargs):
+        for action in self.__actions:
+            exec("action.%s(*args, **kwargs)" % method)
 
     def __handler_get_ms_info(self):
         print "get_monitoring_server_info"
@@ -280,6 +309,7 @@ class Manager(object):
             "stderr": subprocess.STDOUT,
         }
         self.__proc_zabbix_emu = self.__launch(args, kwargs)
+        self.__call_actions("launched_zabbix_emu", self.__proc_zabbix_emu)
 
     def __generate_ms_info_file(self):
         ms_info = {
