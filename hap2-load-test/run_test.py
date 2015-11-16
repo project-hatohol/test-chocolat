@@ -81,6 +81,7 @@ class Manager(object):
         self.__hap2_zabbix_api = None
         self.__in_launch = False
         self.__last_eventid = 0
+        self.__expected_sigchild_pid = None
 
         signal.signal(signal.SIGCHLD, self.__child_handler)
 
@@ -109,6 +110,11 @@ class Manager(object):
             if proc is None:
                 continue
             proc.poll()
+            if proc.returncode is not None and \
+                    proc.pid == self.__expected_sigchild_pid:
+                logger.info("Expected SIGCHILD: %d" % proc.pid)
+                self.__expected_sigchild_pid = None
+                return
             logger.info("PID: %s, ret.code: %s" % (proc.pid, proc.returncode))
         assert False
 
@@ -139,7 +145,22 @@ class Manager(object):
                 logger.warn("No handler for: %s" % method)
                 continue
             handler()
+            self.__terminate_zabbix_emulater_if_needed(count)
             count += 1
+
+    def __terminate_zabbix_emulater_if_needed(self, count):
+        if self.__args.terminate_zabbix_emulator == 0:
+            return
+        if count < self.__args.terminate_zabbix_emulator:
+            return
+        if self.__proc_zabbix_emu is None:
+            return
+        if self.__proc_zabbix_emu.returncode is not None:
+            return
+        logger.info("Terminate zabbix emulator (%d)" %
+                    self.__proc_zabbix_emu.pid)
+        self.__expected_sigchild_pid = self.__proc_zabbix_emu.pid
+        self.__proc_zabbix_emu.terminate()
 
     def __handler_get_ms_info(self):
         print "get_monitoring_server_info"
@@ -357,6 +378,9 @@ def main():
                         help="Polling interval in sec.")
     parser.add_argument("-l", "--loop-count", type=long, default=0,
                         help="Count of pollings. 0 means infinite.")
+    parser.add_argument("-T", "--terminate-zabbix-emulator",
+                        type=long, default=0,
+                        help="Terminate zabbix emulator after the given count of messaging. 0 disables this feature.")
     args = parser.parse_args()
 
     manager = Manager(args)

@@ -77,6 +77,11 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
             "id": req_id,
             "result": handler(self, params),
         }
+
+        # Send response
+        self.send_response(200)
+        self.end_headers()
+
         self.wfile.write(json.dumps(response))
 
     def do_PUT(self):
