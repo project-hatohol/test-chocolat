@@ -101,7 +101,7 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         return True
 
     def __should_check_token(self, method):
-        return not method in ("user.authenticate", "apiinfo.version")
+        return not method in ("user.authenticate", "user.login", "apiinfo.version")
 
     def __check_token(self, body):
         token = self.__get_element_with_check(body, "auth")
@@ -308,6 +308,7 @@ class BaseHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
     post_handlers = {
         "user.authenticate": __handler_user_authenticate,
+        "user.login": __handler_user_authenticate,
         "apiinfo.version": __handler_apiinfo_version,
         "host.get": __handler_host_get,
         "hostgroup.get": __handler_hostgroup_get,

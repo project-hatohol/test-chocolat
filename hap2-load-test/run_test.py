@@ -338,7 +338,7 @@ class Manager(object):
             "userName": "Admin",
             "password": "zabbix",
             "pollingIntervalSec": self.__args.polling_interval,
-            "retryIntervalSec": 10,
+            "retryIntervalSec": self.__args.retry_interval,
             "extendedInfo": "",
         }
         f = self.__args.ms_info_file
@@ -424,6 +424,8 @@ def main():
     parser.add_argument("-N", "--ignore-ns", action="store_true")
     parser.add_argument("-p", "--polling-interval", type=int, default=5,
                         help="Polling interval in sec.")
+    parser.add_argument("-r", "--retry-interval", type=int, default=5,
+                        help="Retry interval in sec.")
     parser.add_argument("-l", "--loop-count", type=long, default=0,
                         help="Count of pollings. 0 means infinite.")
     parser.add_argument("-T", "--terminate-zabbix-emulator",
