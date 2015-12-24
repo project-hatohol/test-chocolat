@@ -432,7 +432,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     libchocoload.HatoholRestApi.define_arguments(parser)
-    parser.add_argument("amqp_broker_url", help="A ULR of the AMQP broker")
+    parser.add_argument("amqp_broker_url", help="A URL of the AMQP broker")
     parser.add_argument("-g", "--num-generators", default=1, type=int,
                         help="The number of event generators working via HAPI2.0")
     parser.add_argument("--hap-base-name", default="events-generator")
