@@ -40,8 +40,12 @@ class Worker(object):
         if user is None:
             user = os.getenv("USER")
         assert user is not None
+        port = self.__args.port
+        if port is None:
+            port = os.getenv("PORT")
+        assert port is not None
 
-        args = ["ssh", self.__args.host, "-l", user, "-T"]
+        args = ["ssh", self.__args.host, "-l", user, "-T", "-p", "%s" % port]
         self.__note(args)
         self.__ssh = subprocess.Popen(args, stdin=subprocess.PIPE,
                                       stdout=subprocess.PIPE)
